@@ -1,0 +1,16 @@
+# python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# job output, if you run a test job inside a clone of this repo
+library/
+work/
+out/
+music/
+raw/
+*.mp4
+*.mov
+*.srt

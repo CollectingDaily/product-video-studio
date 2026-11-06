@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "Copy this next to your EDL as brand.json and point the EDL's 'brand' field at it.",
+    "Any subset works: whatever you leave out falls back to a neutral default.",
+    "",
+    "'font' and 'font_regular' are FILE PATHS, used by ffmpeg's drawtext for headlines.",
+    "'caption.font_family' is an INSTALLED FAMILY NAME, used by libass for captions.",
+    "libass resolves fonts by family, not by file, so getting that one wrong makes",
+    "captions quietly fall back to a default face.",
+    "",
+    "Find a font file:    ls ~/Library/Fonts /Library/Fonts /System/Library/Fonts/Supplemental",
+    "Check a family name: fc-list : family | sort -u | grep -i brandname",
+    "",
+    "Size ratios are fractions of the canvas HEIGHT, so one brand file gives",
+    "sensible type on a 9:16 phone cut and a 16:9 web cut alike.",
+    "",
+    "Colours accept '#RRGGBB', a colour name, or 'name@opacity' such as 'black@0.55'."
+  ],
+
+  "name": "PFC Marketing",
+
+  "font": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  "font_regular": "/System/Library/Fonts/Supplemental/Arial.ttf",
+
+  "colors": {
+    "text": "white",
+    "text_shadow": "black@0.65",
+    "accent": "#E8B33B",
+    "background": "#101417",
+    "panel": "black@0.55"
+  },
+
+  "headline": {
+    "font_size_ratio": 0.052,
+    "position": "top",
+    "margin_ratio": 0.10,
+    "max_chars_per_line": null
+  },
+
+  "caption": {
+    "font_family": "Arial",
+    "bold": true,
+    "font_size_ratio": 0.042,
+    "position": "bottom",
+    "margin_ratio": 0.13,
+    "outline": 3,
+    "uppercase": false
+  },
+
+  "logo": null,
+  "logo_width_ratio": 0.22,
+
+  "safe_area_ratio": 0.06,
+  "loudness_target_lufs": -14.0
+}
