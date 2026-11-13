@@ -274,6 +274,7 @@ re-rendered identically. Keep the EDL next to the output; it *is* the edit.
 |---|---|
 | `music` | The default. A bed under the whole video, ducking automatically under every talking clip. |
 | `silence` | Product video with its own sound worth hearing, or a brand that does not use music. |
+| `narration` | A voiceover recorded elsewhere — voice artist, phone memo, AI read — laid across the whole edit. The mode for an images-plus-script video. Transcribed once, so captions match what was said, and the read sets the runtime. |
 | `tts` | Draft narration from macOS `say`. Fine for judging pacing, audibly synthetic for anything public. |
 
 Ducking is exact rather than sidechained: every shot carrying speech defines an

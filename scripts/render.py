@@ -41,6 +41,8 @@ from mediakit import (  # noqa: E402
 DUCK_PAD = 0.2          # widen ducking either side so the dip lands in silence
 DIP_DURATION = 0.18     # length of a fade-through-colour transition
 AUDIO_RATE = 48000
+# 'say' with no -v writes a near-empty file on some systems, so always name one.
+DEFAULT_SAY_VOICE = "Daniel"
 
 
 # ------------------------------------------------------------------ EDL load
@@ -99,14 +101,22 @@ def validate(edl: dict, base_dir: str) -> list[str]:
                 )
     audio = edl.get("audio") or {}
     mode = audio.get("mode", "silence")
-    if mode not in ("silence", "music", "tts"):
-        problems.append(f"audio.mode {mode!r} must be silence, music or tts")
+    if mode not in ("silence", "music", "tts", "narration"):
+        problems.append(f"audio.mode {mode!r} must be silence, music, tts or narration")
     if mode == "music" and not audio.get("music"):
         problems.append("audio.mode is 'music' but no audio.music path was given")
     if mode == "music" and audio.get("music") and not os.path.exists(resolve(audio["music"], base_dir)):
         problems.append(f"music file not found: {audio['music']}")
     if mode == "tts" and not (audio.get("tts") or {}).get("text"):
         problems.append("audio.mode is 'tts' but audio.tts.text is empty")
+    if mode == "narration":
+        spoken = audio.get("narration")
+        spoken = [spoken] if isinstance(spoken, str) else list(spoken or [])
+        if not spoken:
+            problems.append("audio.mode is 'narration' but no audio.narration path was given")
+        for track in spoken:
+            if not os.path.exists(resolve(track, base_dir)):
+                problems.append(f"narration file not found: {track}")
     caps = (edl.get("captions") or {}).get("mode", "burn")
     if caps not in ("burn", "srt", "none"):
         problems.append(f"captions.mode {caps!r} must be burn, srt or none")
@@ -462,7 +472,8 @@ def words_from_library(root: str, slug: str, start: float, end: float) -> list[t
     return words
 
 
-def transcribe_audio(path: str, work: str, model: str) -> list[tuple[str, float, float]]:
+def transcribe_audio(path: str, work: str, model: str,
+                     tag: str = "caption-src") -> list[tuple[str, float, float]]:
     """Word timings for audio we have no transcript for (TTS, or a shot flagged
     transcribe:true)."""
     require("whisper-cli")
@@ -470,9 +481,9 @@ def transcribe_audio(path: str, work: str, model: str) -> list[tuple[str, float,
         print(f"warning: whisper model missing at {model}; skipping captions for {os.path.basename(path)}",
               file=sys.stderr)
         return []
-    wav = os.path.join(work, "caption-src.wav")
+    wav = os.path.join(work, f"{tag}.wav")
     ffmpeg(["-i", path, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav])
-    base = os.path.join(work, "caption-src")
+    base = os.path.join(work, tag)
     run(["whisper-cli", "-m", model, "-f", wav, "-l", "en",
          "-ml", "1", "-sow", "-oj", "-of", base, "-np"])
     with open(base + ".json") as fh:
@@ -563,15 +574,67 @@ def make_tts(spec: dict, work: str) -> str:
     wav = os.path.join(work, "tts.wav")
     # 'say' infers the container from --file-format, not the extension, and
     # rejects little-endian samples in an AIFF, hence the explicit pairing.
-    cmd = ["say", "-o", raw, "--file-format=WAVE", "--data-format=LEI16@22050"]
-    if spec.get("voice"):
-        cmd += ["-v", str(spec["voice"])]
+    voice = str(spec.get("voice") or DEFAULT_SAY_VOICE)
+    cmd = ["say", "-o", raw, "--file-format=WAVE", "--data-format=LEI16@22050",
+           "-v", voice]
     if spec.get("rate"):
         cmd += ["-r", str(int(spec["rate"]))]
     cmd.append(spec["text"])
     run(cmd)
     ffmpeg(["-i", raw, "-ac", "2", "-ar", str(AUDIO_RATE), wav])
+    # 'say' exits 0 but writes an empty file when the voice is not installed.
+    # Caught here rather than shipping a silent video.
+    if (probe(wav).duration or 0.0) < 0.3:
+        raise ToolError(
+            f"macOS 'say' produced no audio for voice {voice!r}. "
+            "Pick an installed voice with: say -v '?'"
+        )
     return wav
+
+
+def make_narration(spec: dict, base_dir: str, work: str) -> str:
+    """A voiceover recorded elsewhere: one file, or several joined in order.
+
+    Unlike TTS this is the real voice and the spine of the edit, so it is laid
+    across the whole timeline rather than squeezed under the picture.
+    """
+    tracks = spec.get("narration")
+    tracks = [tracks] if isinstance(tracks, str) else list(tracks or [])
+    paths = [resolve(t, base_dir) for t in tracks]
+    if not paths:
+        raise ToolError("audio.mode is 'narration' but no audio.narration path was given.")
+    wav = os.path.join(work, "narration.wav")
+    if len(paths) == 1:
+        ffmpeg(["-i", paths[0], "-vn", "-ac", "2", "-ar", str(AUDIO_RATE), wav])
+        return wav
+    args: list[str] = []
+    for path in paths:
+        args += ["-i", path]
+    chain = "".join(
+        f"[{i}:a]aresample={AUDIO_RATE},aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}];"
+        for i in range(len(paths))
+    )
+    chain += "".join(f"[a{i}]" for i in range(len(paths)))
+    chain += f"concat=n={len(paths)}:v=0:a=1[joined]"
+    ffmpeg(args + ["-filter_complex", chain, "-map", "[joined]",
+                   "-ac", "2", "-ar", str(AUDIO_RATE), wav])
+    return wav
+
+
+def speech_runs(words: list[tuple[str, float, float]],
+                gap: float = 0.45) -> list[tuple[float, float]]:
+    """Collapse word timings into continuous speech.
+
+    A music bed should duck for a sentence and lift in the breath between
+    sentences. Ducking per word makes it flap.
+    """
+    runs: list[tuple[float, float]] = []
+    for _, start, end in words:
+        if runs and start - runs[-1][1] <= gap:
+            runs[-1] = (runs[-1][0], end)
+        else:
+            runs.append((start, end))
+    return runs
 
 
 def duck_expression(intervals: list[tuple[float, float]], duck_db: float) -> str:
@@ -727,6 +790,50 @@ def main() -> int:
             if caption_mode != "none" and audio_spec["tts"].get("captions", True):
                 words = transcribe_audio(tts_wav, work, args.model)
                 cues += [(s + tts_delay, e + tts_delay, t) for s, e, t in group_cues(words, max_chars)]
+            next_index += 1
+
+        if mode == "narration":
+            vo_wav = make_narration(audio_spec, base_dir, work)
+            vo_delay = float(audio_spec.get("start", 0.0))
+            vo_dur = probe(vo_wav).duration or 0.0
+            overrun = vo_delay + vo_dur - total_duration
+            if overrun > 0.05:
+                print(f"warning: the voiceover ends at {vo_delay + vo_dur:.2f}s but the picture "
+                      f"runs {total_duration:.2f}s, so {overrun:.2f}s of voice will be cut off. "
+                      "Lengthen the shots to match the read.", file=sys.stderr)
+            extra_inputs += ["-i", vo_wav]
+            vo_chain = [
+                f"aresample={AUDIO_RATE}",
+                "aformat=sample_fmts=fltp:channel_layouts=stereo",
+            ]
+            if vo_delay > 0:
+                vo_chain.append(f"adelay={int(vo_delay*1000)}|{int(vo_delay*1000)}")
+            vo_gain = float(audio_spec.get("gain_db", 0.0))
+            if vo_gain:
+                vo_chain.append(f"volume={vo_gain}dB")
+            vo_chain += [f"atrim=duration={total_duration:.3f}", "asetpts=N/SR/TB"]
+            # A presenter clip is a real person in the room, so the voiceover
+            # steps back under it instead of talking over the top. Computed
+            # before the voiceover's own speech joins the list below.
+            duck = duck_expression(speech_intervals,
+                                   float(audio_spec.get("duck_under_speech_db", -15)))
+            if duck:
+                vo_chain.append(duck)
+            graph.append(f"[{next_index}:a]" + ",".join(vo_chain) + "[vo]")
+            audio_labels.append("[vo]")
+            vo_words: list[tuple[str, float, float]] = []
+            if caption_mode != "none" and audio_spec.get("captions", True):
+                vo_words = [
+                    (t, s + vo_delay, e + vo_delay)
+                    for t, s, e in transcribe_audio(vo_wav, work, args.model, tag="narration-words")
+                ]
+                cues += group_cues(vo_words, max_chars)
+            # Anything mixed under the voiceover has to duck beneath it, so the
+            # voiceover counts as speech from here on.
+            if vo_words:
+                speech_intervals += speech_runs(vo_words)
+            else:
+                speech_intervals.append((vo_delay, min(vo_delay + vo_dur, total_duration)))
             next_index += 1
 
         if mode == "music" or audio_spec.get("music"):

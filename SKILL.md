@@ -226,6 +226,7 @@ then set `captions.mode` to `burn`, `srt` or `none`.
 |---|---|
 | `music` | The default. A bed under the whole video, ducking automatically under every talking clip. Needs a track in `music/`. |
 | `silence` | Product video that has its own sound worth hearing, or a brand that does not use music. Captions carry the message. |
+| `narration` | A voiceover recorded elsewhere, laid across the whole edit. The mode for an images-plus-script video. Transcribed once, so captions match what was actually said. The read sets the runtime: build the picture to cover it. |
 | `tts` | Draft narration from macOS `say` when there is no suitable library clip. Fine for judging pacing, audibly synthetic for anything public — say so rather than shipping it quietly. |
 
 **Hold the duration.** 30-60 seconds. Stills want 2.5-4 seconds — under 2 and

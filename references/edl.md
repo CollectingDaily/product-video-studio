@@ -151,7 +151,7 @@ accents are all safe. No escaping needed.
 
 | Field | Default | Notes |
 |---|---|---|
-| `mode` | `"silence"` | `music`, `silence`, `tts`. |
+| `mode` | `"silence"` | `music`, `silence`, `narration`, `tts`. |
 | `music` | — | Required for `music`. Loops automatically if shorter than the edit. |
 | `music_gain_db` | `-8` | Level before ducking. |
 | `duck_db` | `-14` | How far the bed drops under speech. `-10` is subtle, `-20` is firm. |
@@ -160,6 +160,42 @@ accents are all safe. No escaping needed.
 Ducking is automatic and exact: every shot carrying speech defines an
 interval, widened slightly so the dip happens in the gap rather than on a
 word. No sidechain tuning required.
+
+### Narration
+
+A voiceover recorded elsewhere — a voice artist, a phone memo, an AI read.
+This is the mode for an images-plus-script video, and the voice becomes the
+spine of the edit.
+
+```json
+"audio": {
+  "mode": "narration",
+  "narration": "voice/vo.wav",
+  "start": 0.0,
+  "gain_db": 0,
+  "captions": true,
+  "duck_under_speech_db": -15
+}
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `narration` | required | One path, or a list of paths joined in order. Any format ffmpeg reads. |
+| `start` | `0` | Seconds of silence before the voice begins. |
+| `gain_db` | `0` | Trim the level. The final mix is normalised anyway, so usually leave it. |
+| `captions` | `true` | Transcribe the track for word-accurate captions. |
+| `duck_under_speech_db` | `-15` | How far the voiceover steps back under a shot that carries its own speech. |
+
+The track is transcribed once, so captions carry the real word timings and
+match what was actually said rather than the script that was written. Those
+timings also make the voiceover count as speech, so a `music` bed added
+alongside ducks beneath it — per sentence, lifting in the breaths.
+
+**The voice sets the length.** If the read is longer than the picture the
+surplus is cut off, and `render.py` says so by how much. Add or lengthen shots
+until the picture covers the read; `--check` reports the total without
+rendering. A narration longer than the edit is the single most common mistake
+here.
 
 ### TTS
 
