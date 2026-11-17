@@ -217,8 +217,19 @@ A `music` key can be added alongside `tts` to get a bed as well.
 ## Captions
 
 ```json
-"captions": { "mode": "burn" }
+"captions": {
+  "mode": "burn",
+  "replace": [["knight", "night"], ["Guido Forks", "Guido Fawkes"]]
+}
 ```
+
+`replace` fixes words the transcriber reliably mishears. Whisper has no idea
+what the subject is, so homophones and proper nouns come back wrong in a way
+no setting fixes: "a night on the rack" is heard as "a knight". Matching is
+case-insensitive and on word boundaries, so `knight` does not touch
+`knighthood`; the replacement is used exactly as written. It applies to burned
+captions and the `.srt` alike, and to every caption source. Check the `.srt`
+after the first render and add a rule for anything wrong.
 
 `burn` renders them into the picture and also writes an `.srt`. `srt` writes
 only the sidecar. `none` writes nothing. `--captions` on the command line

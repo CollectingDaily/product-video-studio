@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -556,6 +557,33 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             fh.write(f"Dialogue: 0,{fmt_ass_time(start)},{fmt_ass_time(end)},Caption,,0,0,0,,{body}\n")
 
 
+def apply_replacements(cues: list[tuple[float, float, str]],
+                       rules: list) -> list[tuple[float, float, str]]:
+    """Fix words the transcriber reliably mishears.
+
+    Whisper has no idea what the subject is, so homophones and proper nouns
+    come back wrong in a way no threshold fixes: "a night on the rack" is
+    heard as "a knight". Matching is case-insensitive and on word boundaries;
+    the replacement is used exactly as written.
+    """
+    if not rules:
+        return cues
+    pairs = []
+    for rule in rules:
+        if isinstance(rule, dict):
+            frm, to = rule.get("from"), rule.get("to", "")
+        else:
+            frm, to = (list(rule) + [""])[:2]
+        if frm:
+            pairs.append((re.compile(rf"\b{re.escape(str(frm))}\b", re.I), str(to)))
+    out = []
+    for start, end, text in cues:
+        for pattern, to in pairs:
+            text = pattern.sub(to.replace("\\", "\\\\"), text)
+        out.append((start, end, text))
+    return out
+
+
 def write_srt(path: str, cues: list[tuple[float, float, str]]) -> None:
     with open(path, "w") as fh:
         for i, (start, end, text) in enumerate(cues, 1):
@@ -872,6 +900,7 @@ def main() -> int:
         video_src = "[vcat]"
         srt_path = os.path.splitext(output)[0] + ".srt"
         if cues:
+            cues = apply_replacements(cues, (edl.get("captions") or {}).get("replace") or [])
             cues.sort(key=lambda c: c[0])
             write_srt(srt_path, cues)
             if caption_mode == "burn":

@@ -283,7 +283,9 @@ interval, widened slightly so the dip happens in the gap rather than on a word.
 ### Captions
 
 `burn` renders them into the picture and writes an `.srt`; `srt` writes only
-the sidecar; `none` writes nothing. Cues come free from library shots, from
+the sidecar; `none` writes nothing. `"replace": [["knight", "night"]]` fixes
+words the transcriber reliably mishears — homophones and proper nouns, which
+no setting fixes — matching case-insensitively on word boundaries. Cues come free from library shots, from
 `tts` narration, and from any shot marked `"transcribe": true`. They are capped
 at two lines and about 3.2 seconds, and libass measures the font and wraps, so
 captions cannot overflow the frame.
